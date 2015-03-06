@@ -1,0 +1,180 @@
+body{
+	margin-left:0px;
+	margin-right:0px;
+}
+
+.domainList{
+	margin-left:8px;
+	margin-right:8px;
+}
+
+.topBar{
+	
+}
+
+.topBar img{
+	float: left;
+	margin-right: 10px;
+	height: 60px;
+}
+
+.summary {
+	border-top: 2px dashed #A6A6A6;
+	border-bottom: 2px dashed #A6A6A6;
+	background: #E9E9E9;
+}
+
+.summary table{
+	margin-top: 50px;
+	margin-bottom: 50px;
+	margin-left: 4.5%;
+	width: 90%;
+	border-radius: 6px;
+	border: thick solid #1f6899;
+	cellpadding: 5px;
+	padding-left: 10px;
+	padding-right: 10px;
+	font-size: 16pt;
+}
+
+.summary table td{
+	border-bottom: 1px dashed #A6A6A6;
+}
+.summary table td:nth-child(2){
+	min-width: 20px;
+}
+.summary table td:nth-child(3){
+	min-width: 350px;
+}
+.summary table td:nth-child(4){
+	width: 75%;
+}
+.summary table tr:nth-child(2) td{
+	text-align: center;
+	border-bottom: none;
+	padding-bottom: 15px;
+}
+.summary table tr:last-child td{
+	border-bottom: none;
+	padding-top: 60px;
+}
+
+.pageTitleContainer {
+	overflow: hidden;
+	margin-left: 15px;
+}
+
+.pageTitle {
+	font-size: 15px;
+	font-weight: bold;
+	float:left;
+	padding-bottom: 2px;
+	margin-left: 15px;
+}
+
+.details {
+	border-radius: 6px;
+	border: thick solid #1f6899;
+	padding-left: 10px;
+	margin: 15px;
+}
+
+h2 {
+	border-radius: 6px;
+	padding: 7px 14px;
+	background: #356484;
+	box-shadow: rgba(0,0,0,1) 0 1px 0;
+	text-shadow: rgba(0,0,0,.4) 0 1px 0;
+	color: white;
+	font-size: 14px;
+	font-family: Georgia, Serif;
+	text-decoration: none;
+}
+
+h2 .button{
+	margin-right:15px;
+}
+
+.button, .spacer {
+	width: 14px;
+	height: 14px;
+	vertical-align: middle;
+	transition: 300ms;
+	border-width: 2px;
+	border-color: #B0B0B0;
+	border-radius: 10px;
+	border-style: solid;
+	float:left;
+}
+
+.spacer{
+	border-color: rgba(255, 255, 255, 1);;
+}
+
+.red {
+	background: linear-gradient(45deg, #3E3E3E, red);
+	background: -moz-linear-gradient(45deg, #3E3E3E, red);
+	background: -webkit-linear-gradient(45deg, #3E3E3E, red);
+	background: -ms-linear-gradient(45deg, #3E3E3E, red);
+	background: -o-linear-gradient(45deg, #3E3E3E, red);
+}
+
+.yellow{
+	background: linear-gradient(45deg, #3E3E3E, yellow);
+	background: -moz-linear-gradient(45deg, #3E3E3E, yellow);
+	background: -webkit-linear-gradient(45deg, #3E3E3E, yellow);
+	background: -ms-linear-gradient(45deg, #3E3E3E, yellow);
+	background: -o-linear-gradient(45deg, #3E3E3E, yellow);
+}
+
+.green{
+	background: linear-gradient(45deg, #3E3E3E, Lime);
+	background: -moz-linear-gradient(45deg, #3E3E3E, Lime);
+	background: -webkit-linear-gradient(45deg, #3E3E3E, Lime);
+	background: -ms-linear-gradient(45deg, #3E3E3E, Lime);
+	background: -o-linear-gradient(45deg, #3E3E3E, Lime);
+}
+
+.grey{
+	background: linear-gradient(45deg, #3E3E3E, grey);
+	background: -moz-linear-gradient(45deg, #3E3E3E, grey);
+	background: -webkit-linear-gradient(45deg, #3E3E3E, grey);
+	background: -ms-linear-gradient(45deg, #3E3E3E, grey);
+	background: -o-linear-gradient(45deg, #3E3E3E, grey);
+}
+
+.red:active {
+	background: linear-gradient(180deg, #3E3E3E, red);
+	background: -moz-linear-gradient(180deg, #3E3E3E, red);
+	background: -webkit-linear-gradient(180deg, #3E3E3E, red);
+	background: -ms-linear-gradient(180deg, #3E3E3E, red);
+	background: -o-linear-gradient(180deg, #3E3E3E, red);
+}
+
+.yellow:active {
+	background: linear-gradient(180deg, #3E3E3E, yellow);
+	background: -moz-linear-gradient(180deg, #3E3E3E, yellow);
+	background: -webkit-linear-gradient(180deg, #3E3E3E, yellow);
+	background: -ms-linear-gradient(180deg, #3E3E3E, yellow);
+	background: -o-linear-gradient(180deg, #3E3E3E, yellow);
+}
+
+.green:active {
+	background: linear-gradient(180deg, #3E3E3E, Lime);
+	background: -moz-linear-gradient(180deg, #3E3E3E, Lime);
+	background: -webkit-linear-gradient(180deg, #3E3E3E, Lime);
+	background: -ms-linear-gradient(180deg, #3E3E3E, Lime);
+	background: -o-linear-gradient(180deg, #3E3E3E, Lime);
+}
+
+.grey:active {
+	background: linear-gradient(180deg, #3E3E3E, grey);
+	background: -moz-linear-gradient(180deg, #3E3E3E, grey);
+	background: -webkit-linear-gradient(180deg, #3E3E3E, grey);
+	background: -ms-linear-gradient(180deg, #3E3E3E, grey);
+	background: -o-linear-gradient(180deg, #3E3E3E, grey);
+}
+
+.button:hover {
+	border-color:#656565;
+}

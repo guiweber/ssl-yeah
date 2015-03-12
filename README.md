@@ -38,8 +38,8 @@ Make sure to test the ruleset thoroughly before publishing it. It is also a good
 
 - The input is not thoroughly checked for malformed or invalid urls
 - No detection of servers that serve completely different pages for http and https
-- No verifications of secure cookies
-- No verification of scripts content for hard-coded calls to http resources
+- No verification of secure cookies yet
+- No verification of XMLHttpRequests yet
 
 ##Dependencies
 

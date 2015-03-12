@@ -124,7 +124,8 @@ function writeBody(domains){
 			stream.write('\r\n<div class="pageTitle">HTTP Status: '+page.httpStatus+' - <a href="https://' + page.url + '">'+ page.url.substring(0,150) +'</a></div></div>');
 			if(page.passiveMixedContent.length || page.activeMixedContent.length || page.message || page.redirectedTo){
 				stream.write('\r\n<div id="page_'+ idCounter +'" class="details" style="display: none;">');
-				if(page.message){stream.write('Error: '+page.message+'<br>');}
+				if(page.message){stream.write('<b>Error:</b> '+page.message+'<br>');}
+				if(page.hasUnsecureBase){stream.write('<h4>Warning:</h4> The &#060;base&#062; tag of this page is hard-coded to HTTP. All relative URLs on this page will be loaded over an unsecure connection. This will cause content to be considered unsecure (active or passive mixed content - listed below if any) if referenced via relative URLs. Even if there is no such content on the page, a protocol relative &#060;base&#062; tag should be used instead.<br>');}
 				if(page.redirectedTo){stream.write('Redirected to: '+page.redirectedTo.substring(0,150)+'<br>');}
 				if(page.activeMixedContent.length){
 					stream.write('\r\n<h4>Active Mixed Content</h4>');

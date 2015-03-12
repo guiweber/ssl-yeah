@@ -90,6 +90,7 @@ util.inherits(DomainConstructor, events.EventEmitter);
 var PageConstructor= function(url) {
 	this.url = url;
 	this.httpStatus = '';
+	this.hasUnsecureBase = false;
 	this.redirectedTo = '';
 	this.message = '';
 	this.status = false;
@@ -430,9 +431,14 @@ function scrape (domain, page, body, depth){
 			});
 		}
 		
+		//references - https://developer.mozilla.org/en-US/docs/Security/MixedContent
+		testElements($, 'base', 'href', domain, page); //<base> needs to be tested first as all relative links depend on it
+		testElements($, 'img', 'src', domain, page);
+		testElements($, 'audio', 'src', domain, page);
+		testElements($, 'video', 'src', domain, page);
 		testElements($, 'link', 'href', domain, page);
 		testElements($, 'script', 'src', domain, page);
-		testElements($, 'img', 'src', domain, page);
+		testElements($, 'iframe', 'src', domain, page);
 		testElements($, 'object', 'archive', domain, page);
 		testElements($, 'object', 'codebase', domain, page);
 		testElements($, 'object', 'data', domain, page);
@@ -440,7 +446,7 @@ function scrape (domain, page, body, depth){
 		testElements($, 'object', 'usemap', domain, page);
 		//object element is used for java appelets & shockwave & others
 		//Doc: http://www.htmlquick.com/reference/tags/object.html
-
+		
 	}
 	
 function testElements($, selector, attribute, domain, page){
@@ -449,10 +455,12 @@ function testElements($, selector, attribute, domain, page){
 	$(selector).each(function(i, elem) {
 		link = $(this).attr(attribute);
 		if(typeof(link) != 'undefined' && link != ''){
-			if(link.match(/^http:\/\//)){
+			if(link.match(/^http:\/\//) || (page.hasUnsecureBase && urlTools.isRelative(link))){
 				var newAssessment = '';
 				switch(selector){
 					case 'img':
+					case 'audio':
+					case 'video':
 						if(urlTools.isNotIn(page.passiveMixedContent, link)){page.passiveMixedContent.push(link)};
 						newAssessment = domains.constants['mixedPassive'];
 						break;
@@ -460,7 +468,7 @@ function testElements($, selector, attribute, domain, page){
 						//https://developer.mozilla.org/en-US/docs/Web/HTML/Link_types
 						var rel = $(this).attr('rel');
 						if(typeof(rel) != 'undefined'){
-							if(rel.match(/icon|apple-touch-icon|apple-touch-icon-precomposed|image_src/)){ //TODO - check an example of link rel="sidebar"... couldn't find one but not sure if it should qualify as mixed content... probably not loaded with the page
+							if(rel.match(/icon|apple-touch-icon|apple-touch-icon-precomposed|image_src/)){
 								if(urlTools.isNotIn(page.passiveMixedContent, link)){page.passiveMixedContent.push(link)};
 								newAssessment = domains.constants['mixedPassive'];
 							}else if(rel.match(/stylesheet/)){
@@ -470,9 +478,14 @@ function testElements($, selector, attribute, domain, page){
 						}
 						break;
 					case 'script':
+					case 'iframe':
 					case 'object':
 						if(urlTools.isNotIn(page.activeMixedContent, link)){page.activeMixedContent.push(link)};
 						newAssessment = domains.constants['mixedActive'];
+						break;
+					case 'base':
+						page.hasUnsecureBase = true;
+						break;
 				}
 				
 				if(domain.assessment == domains.constants['pass'] && newAssessment == domains.constants['mixedPassive']){
@@ -481,7 +494,8 @@ function testElements($, selector, attribute, domain, page){
 					domain.assessment = domains.constants['mixedActive'];
 				}
 			}else if(selector == 'script'){
-				//TODO - Could also check if inline scripts have links to http resources in their code
+				//TODO - Could also check if scripts do XMLHttpRequest through http
+				//TODO - Need to scan the content of CSS files for http urls (background-image, @font-face, etc...) 
 			}
 		}
 	});

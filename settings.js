@@ -2,7 +2,7 @@
 exports.recursionLimit = 1; //recursion limit for crawling pages - If set to 0, the main page will be analysed but links will not be loaded.
 exports.redirectLimit = 3;  //recursion limit for redirects. If set to 0 redirects will not be loaded.
 exports.bypassRobotsTxt = false; //set to true if you want to ignore robots.txt files. WARNING: Setting this to true may get your IP blocked by the host.
-exports.rateLimit = 500; //limits the rate at which pages are requested from the server (in milliseconds). Set to 0 for no limit. WARNING: Requesting pages to quickly may get your IP blocked by the host; 500ms is usually a safe setting.
+exports.rateLimit = 1000; //limits the rate at which pages are requested from the server (in milliseconds). Set to 0 for no limit. WARNING: Requesting pages to quickly may get your IP blocked by the host; although most websites won't complain if you select a faster setting than the default of 1000ms.
 exports.ignoreSubDomains = false; //if set to true, sub domains will not be crawled.
 exports.checkWWW = false; //is set to true, www and non www variants of a domain will be automatically checked.
 

@@ -21,7 +21,7 @@ function getTargets(domains){
 			targets.push(domain.url);
 		}
 	});
-
+	//TODO - implement wildcard rules if all or a subset of the targets could be summarized by a wildcard expression --> need to add test URLs if we do this.
 	return targets.sort();
 }
 
@@ -52,7 +52,8 @@ function write_rule(domains){
 	stream.write('\r\n');
 	
 	targets.forEach(function(target){
-		stream.write('\t<securecookie host="'+ target +'" name=".+">\r\n');
+		target = target.replace(/\./, '\\.');
+		stream.write('\t<securecookie host="^'+ target +'$" name=".+">\r\n');
 	});
 	
 	

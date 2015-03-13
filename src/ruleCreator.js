@@ -46,18 +46,19 @@ function write_rule(domains){
 	stream.write('<ruleset name="'+ name +'">\r\n\r\n');
 	
 	targets.forEach(function(target){
-		stream.write('\t<target host="'+ target +'">\r\n');
+		stream.write('\t<target host="'+ target +'" />\r\n');
 	});
 	
 	stream.write('\r\n');
 	
 	targets.forEach(function(target){
 		target = target.replace(/\./, '\\.');
-		stream.write('\t<securecookie host="^'+ target +'$" name=".+">\r\n');
+		stream.write('\t<securecookie host="^'+ target +'$" name=".+" />\r\n');
 	});
 	
 	
 	stream.write('\r\n\t<rule from="^http:" to="https:" />\r\n\r\n');
+	
 	stream.write('</ruleset>');
 	
 	

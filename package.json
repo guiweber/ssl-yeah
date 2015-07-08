@@ -1,0 +1,22 @@
+{
+"name": "ssl-yeah",
+"version": "0.0.0",
+"main": "ssl-yeah.js",
+"engine": {
+	"node": ">= 0.12.6",
+    "npm": ">= 3.0"
+	},
+"license": "GPL-3.0",
+"description": "An HTTPS website verification tool and ruleset creator for HTTPS Everywhere",
+"homepage": "https://github.com/guiweber/ssl-yeah",
+"keywords": ["https", "tls", "ssl", "yeah", "everywhere", "test", "mcb", "mixed content"],
+"bugs": { "url": "https://github.com/guiweber/ssl-yeah/issues"},
+"repository": {
+    "type": "git",
+    "url": "https://github.com/guiweber/ssl-yeah.git"
+	},
+"dependencies": {
+    "cheerio": ">=0.18.0",
+    "moment": ">=2.9.0"
+	}
+}

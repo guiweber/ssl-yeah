@@ -5,9 +5,7 @@ SSL-Yeah is a simple HTTPS verification tool for websites and ruleset creator fo
 
 1. Install NodeJS on your system (http://nodejs.org/)
 2. Download SSL-Yeah
-3. From the SSL-Yeah Folder, install the dependencies
-    - npm install cheerio
-	- npm install moment
+3. `npm install` from the SSL-Yeah Folder.
 3. Run the script!
 
 ##Usage

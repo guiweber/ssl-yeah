@@ -1,9 +1,9 @@
 {
 "name": "ssl-yeah",
-"version": "0.0.0",
+"version": "0.1.0",
 "main": "ssl-yeah.js",
 "engine": {
-	"node": ">= 0.12.6",
+	"node": ">= 6.2.2",
     "npm": ">= 3.0"
 	},
 "license": "GPL-3.0",
@@ -16,7 +16,7 @@
     "url": "https://github.com/guiweber/ssl-yeah.git"
 	},
 "dependencies": {
-    "cheerio": ">=0.18.0",
-    "moment": ">=2.9.0"
+    "cheerio": ">=0.20.0",
+    "moment": ">=2.13.0"
 	}
 }

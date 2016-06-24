@@ -15,324 +15,249 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+
 //NodeJS Libs
-var events = require('events');
+const EventEmitter = require('events');
 var http = require('http');
 var https = require('https');
 var util = require('util');
+var urlLib = require('url');
 
 //Third Party Libs
 var cheerio = require('cheerio');
-var robotsParser = require('./src/robots-parser/');
+var robotsParser = require('./modules/robots-parser/');
 
 //Other libs
-var settings = require('./settings.js');
-var log = require('./src/logCreator.js');
-var rule = require('./src/ruleCreator.js');
-var report = require('./src/reportCreator.js');
-var urlTools = require('./src/urlTools.js');
+var log = require('./modules/logCreator.js');
+var rule = require('./modules/ruleCreator.js');
+var report = require('./modules/reportCreator.js');
+var urlTools = require('./modules/urlTools.js');
+const constants = require('./modules/constants.js');
 
-var progressRefreshInterval = '';
-var testing = false;
-var domains = [];
-	domains.constants = {
-		'pass':					'PASS',
-		'mixedPassive': 		'WARN (Passive Mixed Content)',
-		'mixedActive': 		'FAIL (Active Mixed Content)',
-		'connectionError': 	'FAIL (Connection Error)',
-		'noValidResponse': 'N/A (No Valid Response)',
-		'redirect': 				'N/A (Redirects All)',
-		'undefined': 			'N/A (No Results)'
-	};
-  
-//*************CLASSES**********//
-var DomainConstructor = function(url) {
-	this.activeTests =  0;
-	this.url = url;
-	this.assessment = 'PASS';
-	this.pages = [];
-	this.robots = '';
-	this.robotsInitialized= false;
-	
-	this.getFinalAssessment = function(){
-		
-		if(this.assessment == domains.constants['mixedActive'] || this.assessment == domains.constants['mixedPassive'] || this.assessment == domains.constants['connectionError'] ){
-			return this.assessment;
-		}else{
-			var statusCount = { 'pass': 0, 'noValidResponse': 0, 'redirect': 0};
-			this.pages.forEach(function (page){
-				if(page.httpStatus == 200){
-					statusCount['pass'] ++;
-				}else if(page.status == domains.constants['noValidResponse']){
-					statusCount['noValidResponse'] ++;
-				}else if(page.status == domains.constants['redirect']){
-					statusCount['redirect'] ++;
-				}
-			});
-			
-			if(statusCount['pass']){
-				return domains.constants['pass'];
-			}else if(statusCount['redirect'] == this.pages.length && this.pages.length !== 0){
-				return domains.constants['redirect'];
-			}else if(statusCount['noValidResponse']){
-				return domains.constants['noValidResponse'];
+//CLASSES
+var Settings = require('./classes/Settings.js');
+var Page = require('./classes/Page.js');
+var Host = require('./classes/Host.js');
+
+class SSLYeah extends EventEmitter{
+	constructor() {
+		super();
+		this.hosts = [];
+		this.settings = new Settings();
+		this.previousCrawlTime = 0;
+		this.writingRule = false;
+		this.writingReport = false;
+		this.baseHost = '';
+		this.on('hostDone', this.isCrawlDone);
+	}
+
+	//TODO - Improve exception handling --> Need to finish writing the debug log before closing if possible.
+	static logStart(outputFolder = 'output', toConsole = false){
+		log.init(outputFolder, toConsole);
+		log.write('Log Start');
+	}
+
+	static logEnd(){
+		log.end();
+	}
+
+	static logWrite(msg){
+		log.write(msg);
+	}
+
+	isCrawlDone(){
+		var allDone = true;
+		for(var i in this.hosts){
+			if(this.hosts[i].activeTests > 0){
+				allDone = false;
+				break;
+			}
+		}
+		if(allDone){
+			this.emit('crawlDone');
+		}
+	}
+
+	startCrawl(url, redirectCount = 0){
+		//TODO - Should probably switch to using the native URL module of NodeJS to parse the URL
+		url = urlTools.removeProtocol(url);
+		var baseUrl = urlTools.getHost(url.replace(/^(www\d?\.)/, ''));
+
+		if(this.hosts.length == 0){
+			this.baseHost = baseUrl;
+		}
+
+		var matchedHost = false;
+		var wwwNewVariant = false;
+		this.hosts.forEach(function(existingHost){
+			if(existingHost.url == urlTools.getHost(url)){
+				matchedHost = existingHost;
 			}else{
-				return domains.constants['undefined'];
-			}
-			
-		}
-	}
-
-};
-util.inherits(DomainConstructor, events.EventEmitter);
-
-
-var PageConstructor= function(url) {
-	this.url = url;
-	this.httpStatus = '';
-	this.hasUnsecureBase = false;
-	this.redirectedTo = '';
-	this.message = '';
-	this.status = false;
-	this.passiveMixedContent = [];
-	this.activeMixedContent = [];
-};
-
-
-//*************INIT**************//
-process.stdin.setEncoding('utf8');
-log.init(settings.outputFolder, settings.outputDebugLog, settings.outputDebugToConsole);
-log.write('Log Start');
-
-
-
-//*************MAIN*************//
-if(process.argv[2]){
-	startDomain(process.argv[2]);
-	progressRefreshInterval = setInterval(trackProgress, 500);
-	testing = true;
-}else{
-	help();
-}
-
-process.stdin.on('readable', function() {
-	var chunk = process.stdin.read();
-	if (chunk !== null) {
-		var command = chunk.toString().replace(/\r?\n$/, '');
-		if(command.match(/^do\s(?:.*\.)*.{1,}$/)){
-			//TODO -- could queue additional commands instead of blocking them... 
-			//then we'd have to clear all data after each request is done... or export as a new instance every time?
-			if(testing == false){
-				testing = true;
-				startDomain(command.substr(3, command.length-3));
-				progressRefreshInterval = setInterval(trackProgress, 500);
-			}
-		}else{
-			switch (command){
-				case 'exit':
-					log.end();
-					process.exit(0);
-					break;
-				case 'help':
-				case '?':
-					help();
-					break;
-				default:
-					console.log('unrecognised command: ' + command);
-			}
-		}
-	}
-});
-
-process.on('exit', function(code) {
-  console.log('Goodbye - Exiting with code:', code);
-});
-
-//TODO - Improve exception handling --> Need to finish writing the debug log before closing if possible.
-
-
-//***********FUNCTIONS***********//
-function help(){
-	
-	clearConsole();
-	console.log('----------------------  Welcome to SSL-Yeah  ------------------------');
-	console.log('- ');
-	console.log('- Settings can be changed in the config file under config/config.js');
-	console.log('- ');
-	console.log('- Commands:');
-	console.log('- "do **domain name**" to create a rule');
-	console.log('- "exit" to quit');
-	console.log('- "help" or "?" to display this');
-	console.log('- ');
-	console.log('---------------------------------------------------------------------- ');
-}
-
-function startDomain(url, redirectCount){
-	
-	if(typeof(redirectCount) == 'undefined'){redirectCount = 0;}
-
-	//TODO - Should probably switch to using the native URL module of NodeJS to parse the URL
-	url = urlTools.removeProtocol(url);
-	var baseUrl = urlTools.getDomain(url.replace(/^(www\d?\.)/, ''));
-	
-	if(domains.length == 0){
-		domains.baseUrl = baseUrl;
-	}
-	
-	var matchedDomain = false;
-	var wwwNewVariant = false;
-	domains.forEach(function(existingDomain){
-		if(existingDomain.url == urlTools.getDomain(url)){
-			matchedDomain = existingDomain;
-		}else{
-			if(existingDomain.url == baseUrl){
-				wwwNewVariant = true;
-			}
-		}
-	});
-	
-	if(matchedDomain){
-		if(urlTools.isNotIn(matchedDomain.pages, url, 'url')){
-			log.write('Domain already in list and page is new. Domain: '+matchedDomain.url+' Page URL: '+ url);
-			scheduleCrawl(matchedDomain, url, 0, redirectCount); 
-		}else{
-			log.write('Domain already in list and page is not new. Skipping. Domain: '+matchedDomain.url+' Page URL: '+ url);
-		}
-	}else{
-		var newDomains = [];
-		if(settings.checkWWW){
-			if(wwwNewVariant == false){
-				newDomains.push(baseUrl);
-				newDomains.push('www.' + baseUrl);
-			}
-			
-			if(url.match(/^(www\d\.)/)){ 
-				newDomains.push(urlTools.getDomain(url));
-			}
-		}else{
-			newDomains.push(urlTools.getDomain(url));
-		}
-		
-		newDomains.forEach(function(newDomainUrl){
-			
-			var domain = new DomainConstructor(newDomainUrl);
-			domains.push(domain);
-			log.write('starting domain ' + domain.url);
-			getRobotsTxt(domain, 'https', function(){
-				scheduleCrawl(domain, newDomainUrl, 0, redirectCount);
-				if(url.match(new RegExp('^'+newDomainUrl)) && ! url.match(new RegExp('^'+newDomainUrl+'/?$'))){ 
-					log.write('matched sample page '+url+ ' to domain ' + domain.url);
-					scheduleCrawl(domain, url, 0, redirectCount); 
+				if(existingHost.url == baseUrl){
+					wwwNewVariant = true;
 				}
-			});
+			}
 		});
 
-		//TODO - Discover subdomains from search engines and call crawlpage on them
+		if(matchedHost){
+			if(urlTools.isNotIn(matchedHost.pages, url, 'url')){
+				log.write('Host already in list and page is new. Host: '+matchedHost.url+' Page URL: '+ url);
+				scheduleCrawl(this, matchedHost, url, 0, redirectCount);
+			}else{
+				log.write('Host already in list and page is not new. Skipping. Host: '+matchedHost.url+' Page URL: '+ url);
+			}
+		}else{
+			var newHosts = [];
+			if(this.settings.checkWWW){
+				if(wwwNewVariant == false){
+					newHosts.push(baseUrl);
+					newHosts.push('www.' + baseUrl);
+				}
+
+				if(url.match(/^(www\d\.)/)){
+					newHosts.push(urlTools.getHost(url));
+				}
+			}else{
+				newHosts.push(urlTools.getHost(url));
+			}
+
+			for(var i in newHosts){
+				var host = new Host(this, newHosts[i], log);
+				this.hosts.push(host);
+				log.write('starting crawl of ' + host.url);
+				var callback = function(){
+					scheduleCrawl(this, host, newHosts[i], 0, redirectCount);
+					if(url.match(new RegExp('^' + newHosts[i])) && ! url.match(new RegExp('^' + newHosts[i] + '/?$'))){
+						log.write('matched sample page ' + url + ' to host ' + host.url);
+						scheduleCrawl(this, host, url, 0, redirectCount);
+					}
+				}.bind(this);
+				if(this.settings.bypassRobotsTxt){
+					host.robotsInitialized = true;
+					callback();
+				}else{
+					getRobotsTxt(host, 'https', callback);
+				}
+			};
+			//TODO - Discover subhosts from search engines and call crawlpage on them
+		}
+	}
+
+	writeRule(callback){
+		log.write('Writing Rule');
+		rule.write(this.settings.outputFolder, this, function(){
+				log.write('Rule written');
+				callback();
+			});
+	}
+
+	writeReport(callback){
+		log.write('Writing Report');
+		report.write(this.settings.outputFolder, this, function(){
+				log.write('Report written');
+				callback();
+			});
 	}
 }
 
-function getRobotsTxt(domain, protocol, callback){
-	
-	if(settings.bypassRobotsTxt){
-		domain.robotsInitialized = true;
+module.exports = SSLYeah;
+
+if(require.main === module){
+	require('./modules/cli.js');
+}
+
+function getRobotsTxt(host, protocol, callback){
+	var initialize = function(callback){
+		host.robotsInitialized = true;
+		host.activeTests --;
 		callback();
-	}else{
-		var initialize = function(){
-			domain.robotsInitialized = true;
-			domain.activeTests --;
-			callback();
-			domain.emit('robotsInitialized');
-		}
-		var retryHTTP = function(){
-			if(protocol == 'https'){
-				domain.activeTests --;
-				getRobotsTxt(domain, 'http', callback);
-			}else{
-				initialize();
-			}
-		}
-		var processResponse = function(res){
-			if(res.statusCode == 200){
-				log.write('Robots.txt found for ' + domain.url);
-				res.on('data', function(body){ 
-					domain.robots = domain.robots + body; 
-				});
-				res.on('end', function(){
-					domain.robots = robotsParser(robotsUrl, domain.robots);
-					log.write('Parsed robots.txt for ' + domain.url);
-					initialize();
-				});
-			}else{
-				log.write('Robots.txt NOT found at '+ robotsUrl +'- Status code: ' + res.statusCode);
-				retryHTTP();
-			}
-		}
-		
-		var robotsUrl = protocol + '://' + domain.url + '/robots.txt';
-		domain.activeTests ++;
-		
+		host.emit('robotsInitialized');
+	};
+
+	var retryHTTP = function(){
 		if(protocol == 'https'){
-			https.get(robotsUrl , function(res) {
-				processResponse(res);
-			}).on('error', function(e) {
-				log.write('Error while fetching robots.txt over HTTPS: ' + e.message + ' for domain : ' + domain.url);
-				retryHTTP();
+			host.activeTests --;
+			getRobotsTxt(host, 'http', callback);
+		}else{
+			initialize(callback);
+		}
+	};
+
+	var response = function(res){
+		if(res.statusCode == 200){
+			log.write('Robots.txt found for ' + host.url);
+			res.on('data', function(body){
+				host.robots = host.robots + body;
+			});
+			res.on('end', function(){
+				host.robots = robotsParser(robotsUrl, host.robots);
+				log.write('Parsed robots.txt for ' + host.url);
+				initialize(callback);
 			});
 		}else{
-			http.get(robotsUrl , function(res) {
-				processResponse(res);
-			}).on('error', function(e) {
-				log.write('Error while fetching robots.txt over HTTP: ' + e.message + ' for domain : ' + domain.url);
-				initialize();
-			});
+			log.write('Robots.txt NOT found at '+ robotsUrl +'- Status code: ' + res.statusCode);
+			retryHTTP();
 		}
+	};
+
+	var robotsUrl = protocol + '://' + host.url + '/robots.txt';
+	host.activeTests ++;
+
+	if(protocol == 'https'){
+		https.get(robotsUrl, function(res) {
+			response(res);
+		}).on('error', function(e) {
+			log.write('Error while fetching robots.txt over HTTPS: ' + e.message + ' for host : ' + host.url);
+			retryHTTP();
+		});
+	}else{
+		http.get(robotsUrl, function(res) {
+			response(res);
+		}).on('error', function(e) {
+			log.write('Error while fetching robots.txt over HTTP: ' + e.message + ' for host : ' + host.url);
+			initialize(callback);
+		});
 	}
-	
 }
 
 
-function scheduleCrawl(domain, url, depth, redirectCount){
-
-	if(domain.robotsInitialized == false){
-		domain.on('robotsInitialized', function() { scheduleCrawl(domain, url, depth, redirectCount); });
+function scheduleCrawl(crawler, host, url, depth, redirectCount){
+	if(host.robotsInitialized == false){
+		host.on('robotsInitialized', function() { scheduleCrawl(crawler, host, url, depth, redirectCount); });
 	}else{
 		url = urlTools.removeProtocol(url);
-		if(settings.bypassRobotsTxt == false && domain.robots && domain.robots.isDisallowed('https://' + url)){
+		if(crawler.settings.bypassRobotsTxt == false && host.robots && host.robots.isDisallowed('https://' + url)){
 			log.write('Rejected disallowed page : ' + url);
 			//TODO - Keep track of rejected pages and include the total number of unique pages in report summary
 		}else{
 			if(urlTools.fileFormatOk('https://' +url) == false){
 				log.write('Rejected disallowed file format for link: '+ url);
 			}else{
-				if(typeof(scheduleCrawl.previousCrawlTime) == 'undefined'){
-					scheduleCrawl.previousCrawlTime = 0;
-				}
-
 				var isNewPage = true;
-				domain.pages.forEach(function(alreadyDone){
-					if(alreadyDone.url == url){
+				host.pages.forEach(function(alreadyDone){
+					if(urlTools.isSamePage('https://' + alreadyDone.url, 'https://' + url)){
 						isNewPage = false;
 					}
 				});
 				if(!isNewPage){
 					log.write('skipping page - already done: '+ url);
 				}else{
-					domain.activeTests ++;
-					var page = new PageConstructor(url);
-					domain.pages.push(page);
-					if(settings.rateLimit > 0){
+					host.activeTests ++;
+					var page = new Page(url);
+					host.pages.push(page);
+					if(crawler.settings.rateLimit > 0){
 						var now = Date.now();
-						if(now - scheduleCrawl.previousCrawlTime > settings.rateLimit){
-							scheduleCrawl.previousCrawlTime = now;
-							crawl(domain, page, depth, redirectCount);
+						if(now - crawler.previousCrawlTime > crawler.settings.rateLimit){
+							crawler.previousCrawlTime = now;
+							crawl(crawler, host, page, depth, redirectCount);
 						}else {
-							var delay = scheduleCrawl.previousCrawlTime - now + settings.rateLimit;
+							var delay = crawler.previousCrawlTime - now + crawler.settings.rateLimit;
 							log.write('delaying crawl by '+delay+'ms for ' + url);
-							scheduleCrawl.previousCrawlTime = scheduleCrawl.previousCrawlTime + settings.rateLimit;
-							setTimeout(function () { crawl(domain, page, depth, redirectCount) }, delay);
+							crawler.previousCrawlTime = crawler.previousCrawlTime + crawler.settings.rateLimit;
+							setTimeout(function () { crawl(crawler, host, page, depth, redirectCount) }, delay);
 						}
 					}else{
-						crawl(domain, page, depth, redirectCount);
+						crawl(crawler, host, page, depth, redirectCount);
 					}
 				}
 			}
@@ -340,12 +265,12 @@ function scheduleCrawl(domain, url, depth, redirectCount){
 	}
 }
 
-function crawl(domain, page, depth, redirectCount){
-//TODO - Need to check for cookies and write that in the rule (can we check programatically if the cookies work over https? if not let the user test them, but tell him on which domains cookies are used)
+function crawl(crawler, host, page, depth, redirectCount){
+//TODO - Need to check for cookies and write that in the rule (can we check programatically if the cookies work over https? if not let the user test them, but tell him on which hosts cookies are used)
 //TODO - Check if content is in <Noscript> tag... many sites have http icons in noscript but everything else https... so we should probably treat them differently.
-	
+
 	log.write('starting crawl (depth: '+depth+' Redirects: '+ redirectCount + ') for ' + page.url);
-	if(depth == settings.recursionLimit){
+	if(depth == crawler.settings.recursionLimit){
 		log.write('max depth reached - <a> links on page will be ignored');
 	}
 
@@ -354,102 +279,110 @@ function crawl(domain, page, depth, redirectCount){
 		page.httpStatus = res.statusCode;
 
 		if(res.statusCode == 200){
-			res.on('data', function(body){ scrape(domain, page, body, depth); });
+			res.on('data', function(body){ scrape(crawler, host, page, body, depth); });
 			res.on('end', function(){
 				log.write('Finished url ' + page.url);
-				domain.activeTests --;
-				if(domain.activeTests == 0){
-					log.write('Finished domain ' + domain.url + '. Final Assessment is ' + domain.getFinalAssessment() );
+				host.activeTests --;
+				crawler.emit('pageDone', page);
+				if(host.activeTests == 0){
+					log.write('Finished host ' + host.url + '. Final Assessment is ' + host.getFinalAssessment() );
+					crawler.emit('hostDone', host);
 				}
 			});
 		}else if(res.statusCode > 300 && res.statusCode < 400){
-			domain.activeTests --;
-			page.status = domains.constants['redirect'];
-			if(redirectCount < settings.redirectLimit){
+			host.activeTests --;
+			page.status = constants['redirect'];
+			if(redirectCount < crawler.settings.redirectLimit){
 				if(typeof(res.headers['location'] != 'undefined') && res.headers['location'] != ''){
 					log.write('Redirecting from '+ page.url + ' to ' + res.headers['location']);
 					page.redirectedTo = res.headers['location'];
 					if(urlTools.isRelative(res.headers['location'])){
-						var link = domain.url + '/' + res.headers['location'].replace(/^\//, '');
-						scheduleCrawl(domain, link, depth, ++redirectCount);
-					}else if(urlTools.isSameDomain(res.headers['location'], page.url)){
-						scheduleCrawl(domain, res.headers['location'], depth, ++redirectCount);
-					}else if(settings.ignoreSubDomains == false && urlTools.isSubDomain(domains.baseUrl, res.headers['location'])){
-						startDomain(res.headers['location'], ++redirectCount);
+						var link = host.url + '/' + res.headers['location'].replace(/^\//, '');
+						scheduleCrawl(crawler, host, link, depth, ++redirectCount);
+					}else if(urlTools.isSameHost(res.headers['location'], page.url)){
+						scheduleCrawl(crawler, host, res.headers['location'], depth, ++redirectCount);
+					}else if(crawler.settings.ignoreSubDomains == false && urlTools.isSubHost(crawler.baseHost, res.headers['location'])){
+						crawler.startCrawl(res.headers['location'], ++redirectCount);
+					}else{
+						log.write('Redirect did not match any redirect case and was ignored');
 					}
 				}else{
 					log.write('Redirect requested but no location found in headers for page: '+ page.url);
 				}
 			}else {
-				log.write('Too many redirects (' + settings.redirectLimit +') for page: '+ page.url);
+				log.write('Too many redirects (' + crawler.settings.redirectLimit +') for page: '+ page.url);
 			}
+			crawler.emit('pageDone', page);
 		}else{
 			log.write('HTTP Status code ' + res.statusCode + ' is not supported');
-			domain.activeTests --;
-			page.status = domains.constants['noValidResponse'];
+			host.activeTests --;
+			page.status = constants['noValidResponse'];
+			crawler.emit('pageDone', page);
 		}
-		
+
 	}).on('error', function(e) {
 		//should we catch certificate errors specifically?
-		page.status = domains.constants['connectionError'];
-		domain.activeTests --;
-		if(depth == 0){
-			domain.assessment = domains.constants['connectionError'];
-		}
+		page.status = constants['connectionError'];
 		log.write('Error in https.get() : ' + e.message + ' for page : ' + page.url);
 		page.httpStatus = 'Error';
 		page.message = e.message;
+		crawler.emit('pageDone', page);
+		host.activeTests --;
+		if(depth == 0){
+			host.assessment = constants['connectionError'];
+			crawler.emit('hostDone', host);
+		}
 	});
 }
 
-function scrape (domain, page, body, depth){
-		
+function scrape (crawler, host, page, body, depth){
+
 		var $ = cheerio.load(body.toString());
-		
-		if(depth < settings.recursionLimit){
+
+		if(depth < crawler.settings.recursionLimit){
 			$('a').each(function(i, elem) {
 				var link = $(this).attr('href');
 				var match = false;
 				if(typeof(link) != 'undefined' && link != ''){
-					if(urlTools.isSameDomain(domain.url, link)){
+					if(urlTools.isSameHost(host.url, link)){
 						match = true;
 					}else if(urlTools.isRelative(link)){
-						link = domain.url + '/' + link.replace(/^\//, '');
+						link = host.url + '/' + link.replace(/^\//, '');
 						match = true;
 					}
 					if(match){
-						scheduleCrawl(domain, link, depth+1, 0);
-					}else if(urlTools.isSubDomain(domains.baseUrl, link)){
-						if(settings.ignoreSubDomains == false){
-							log.write('Found Subdomain ' + link + ' of base domain ' + domains.baseUrl);
-							startDomain(link);
+						scheduleCrawl(crawler, host, link, depth+1, 0);
+					}else if(urlTools.isSubHost(crawler.baseHost, link)){
+						if(crawler.settings.ignoreSubDomains == false){
+							log.write('Found Subhost ' + link + ' of base host ' + crawler.baseHost);
+							crawler.startCrawl(link);
 						}
 					}else{
-						log.write('Link does not match domain or is not valid; skipping. Link: ' + link + ' In page: ' + page.url);
+						log.write('Link does not match host or is not valid; skipping. Link: ' + link + ' In page: ' + page.url);
 					}
 				}
 			});
 		}
-		
+
 		//references - https://developer.mozilla.org/en-US/docs/Security/MixedContent
-		testElements($, 'base', 'href', domain, page); //<base> needs to be tested first as all relative links depend on it
-		testElements($, 'img', 'src', domain, page);
-		testElements($, 'audio', 'src', domain, page);
-		testElements($, 'video', 'src', domain, page);
-		testElements($, 'link', 'href', domain, page);
-		testElements($, 'script', 'src', domain, page);
-		testElements($, 'iframe', 'src', domain, page);
-		testElements($, 'object', 'archive', domain, page);
-		testElements($, 'object', 'codebase', domain, page);
-		testElements($, 'object', 'data', domain, page);
-		testElements($, 'object', 'classid', domain, page);
-		testElements($, 'object', 'usemap', domain, page);
+		testElements($, 'base', 'href', host, page); //<base> needs to be tested first as all relative links depend on it
+		testElements($, 'img', 'src', host, page);
+		testElements($, 'audio', 'src', host, page);
+		testElements($, 'video', 'src', host, page);
+		testElements($, 'link', 'href', host, page);
+		testElements($, 'script', 'src', host, page);
+		testElements($, 'iframe', 'src', host, page);
+		testElements($, 'object', 'archive', host, page);
+		testElements($, 'object', 'codebase', host, page);
+		testElements($, 'object', 'data', host, page);
+		testElements($, 'object', 'classid', host, page);
+		testElements($, 'object', 'usemap', host, page);
 		//object element is used for java appelets & shockwave & others
 		//Doc: http://www.htmlquick.com/reference/tags/object.html
-		
+
 	}
-	
-function testElements($, selector, attribute, domain, page){
+
+function testElements($, selector, attribute, host, page){
 	var link = '';
 	var httpMatch = false;
 	$(selector).each(function(i, elem) {
@@ -462,7 +395,7 @@ function testElements($, selector, attribute, domain, page){
 					case 'audio':
 					case 'video':
 						if(urlTools.isNotIn(page.passiveMixedContent, link)){page.passiveMixedContent.push(link)};
-						newAssessment = domains.constants['mixedPassive'];
+						newAssessment = constants['mixedPassive'];
 						break;
 					case 'link':
 						//https://developer.mozilla.org/en-US/docs/Web/HTML/Link_types
@@ -470,10 +403,10 @@ function testElements($, selector, attribute, domain, page){
 						if(typeof(rel) != 'undefined'){
 							if(rel.match(/icon|apple-touch-icon|apple-touch-icon-precomposed|image_src/)){
 								if(urlTools.isNotIn(page.passiveMixedContent, link)){page.passiveMixedContent.push(link)};
-								newAssessment = domains.constants['mixedPassive'];
+								newAssessment = constants['mixedPassive'];
 							}else if(rel.match(/stylesheet/)){
 								if(urlTools.isNotIn(page.activeMixedContent, link)){page.activeMixedContent.push(link)};
-								newAssessment = domains.constants['mixedActive'];
+								newAssessment = constants['mixedActive'];
 							}
 						}
 						break;
@@ -481,116 +414,22 @@ function testElements($, selector, attribute, domain, page){
 					case 'iframe':
 					case 'object':
 						if(urlTools.isNotIn(page.activeMixedContent, link)){page.activeMixedContent.push(link)};
-						newAssessment = domains.constants['mixedActive'];
+						newAssessment = constants['mixedActive'];
 						break;
 					case 'base':
 						page.hasUnsecureBase = true;
 						break;
 				}
-				
-				if(domain.assessment == domains.constants['pass'] && newAssessment == domains.constants['mixedPassive']){
-					domain.assessment = domains.constants['mixedPassive'];
-				}else if((domain.assessment == domains.constants['pass'] || domain.assessment == domains.constants['mixedPassive']) && newAssessment == domains.constants['mixedActive']){
-					domain.assessment = domains.constants['mixedActive'];
+
+				if(host.assessment == constants['pass'] && newAssessment == constants['mixedPassive']){
+					host.assessment = constants['mixedPassive'];
+				}else if((host.assessment == constants['pass'] || host.assessment == constants['mixedPassive']) && newAssessment == constants['mixedActive']){
+					host.assessment = constants['mixedActive'];
 				}
 			}else if(selector == 'script'){
 				//TODO - Could also check if scripts do XMLHttpRequest through http
-				//TODO - Need to scan the content of CSS files for http urls (background-image, @font-face, etc...) 
+				//TODO - Need to scan the content of CSS files for http urls (background-image, @font-face, etc...)
 			}
 		}
 	});
-}
-
-function trackProgress(){
-	var showMaxDomains = 17;
-	var activeTestsCount = 0;
-	var activeDomainsCount = 0;
-	var doneDomainsCount = 0;
-	var pagesDone = 0;
-	var pass = 0;
-	var fail = 0;
-	
-	domains.forEach(function(domain){
-		pagesDone = pagesDone + domain.pages.length;
-		activeTestsCount = activeTestsCount + domain.activeTests;
-		if(domain.activeTests == 0){
-			doneDomainsCount ++;
-		}else{
-			activeDomainsCount  ++;
-		}
-		if(domain.assessment == domains.constants['pass'] || domain.assessment == domains.constants['mixedPassive']){
-			pass ++;
-		}else{
-			fail ++;
-		}
-	});
-
-	if(settings.outputDebugToConsole == false){
-		
-		if(typeof(trackProgress.blink) == 'undefined' || trackProgress.blink == ''){
-			trackProgress.blink = 'Still working...';
-		}else{
-			trackProgress.blink = '';
-		}
-		
-		clearConsole();
-		console.log('SSL-Yeah - Progress - ' + pagesDone + ' pages requested so far. ' + trackProgress.blink);
-		console.log('----------------------------------------------------------------------------');
-		if(domains.length < showMaxDomains){
-			domains.forEach(function(domain){
-				console.log(domain.url + ' - ' + domain.activeTests + ' pages in queue - ' + domain.getFinalAssessment());
-			});
-		}else{
-			var shownCount = 0;
-			domains.forEach(function(domain){
-				if(domain.activeTests > 0 && shownCount  < showMaxDomains){
-					shownCount  ++;
-					console.log(domain.url + ' - ' + domain.activeTests + ' pages in queue - ' + domain.getFinalAssessment());
-				}
-			});
-			console.log('');
-			console.log('+ ' + (activeDomainsCount - shownCount) + ' other domains in test');
-			console.log('+ ' + doneDomainsCount + ' domains done');
-			console.log('Results so far ==> Pass, Warn, N/A: ' + pass + ' Fail: ' + fail);
-		}
-	}
-	
-	if(activeTestsCount == 0){
-		clearInterval(progressRefreshInterval);
-		console.log('');
-		console.log('Crawl done... Writing to file...');
-		log.write('Crawl Done');
-		if(settings.outputReport){
-			log.write('Writing Report');
-			report.write(settings.outputFolder, domains, 
-				function(){
-					log.write('Report written');
-					if(rule.writing == false){ allDone(); }
-				});
-		}
-		if(settings.outputRule){
-			log.write('Writing Rule');
-			rule.write(settings.outputFolder, domains, 
-				function(){
-					log.write('Rule written');
-					if(report.writing == false){ allDone(); }
-				});
-		}
-	}
-	//TODO - Add blinking progress indicator for when no info is updated (can be long when a site is timing out)
-}
-
-function clearConsole(){
-	if (process.platform == 'win32'){
-		process.stdout.write('\033c'); 
-	}else{
-		process.stdout.write('\033[2J'); //needs testing on linux
-	}
-}
-
-function allDone(){
-	log.write('All Done');
-	console.log('All Done');
-	log.end();
-	process.exit(0);
 }
